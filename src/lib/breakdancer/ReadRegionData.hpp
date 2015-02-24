@@ -4,7 +4,7 @@
 #include "ReadCountsByLib.hpp"
 #include "common/Graph.hpp"
 #include "common/Options.hpp"
-#include "io/Read.hpp"
+#include "io/Alignment.hpp"
 
 #include <boost/function.hpp>
 #include <boost/range/algorithm/remove_copy_if.hpp>
@@ -20,7 +20,7 @@
 
 class ReadRegionData {
 public:
-    typedef breakdancer::Read ReadType;
+    typedef Alignment::Ptr ReadType;
     typedef BasicRegion::ReadVector ReadVector;
     typedef BasicRegion::const_read_iterator const_read_iterator;
     typedef BasicRegion::iterator_range read_iter_range;
@@ -39,7 +39,6 @@ public:
 
     void summary(std::ostream& s) const;
 
-//    Graph region_graph() const;
 
     void accumulate_reads_between_regions(ReadCountsByLib& acc, size_t begin, size_t end) const;
     uint32_t region_lib_read_count(size_t region_idx, std::string const& lib) const;
@@ -98,7 +97,7 @@ private:
         size_t rv = 0;
         ReadVector const& v = _reads_in_region(region_idx);
         for (ReadVector::const_iterator i = v.begin(); i != v.end(); ++i) {
-            ReadsToRegionsMap::const_iterator found = _read_regions.find(i->query_name());
+            ReadsToRegionsMap::const_iterator found = _read_regions.find((*i)->query_name());
             if (found == _read_regions.end() || found->second.size() != 2)
                 ++rv;
         }
@@ -185,5 +184,5 @@ void ReadRegionData::erase_read(std::string const& read_name) {
 
 inline
 bool ReadRegionData::read_exists(ReadType const& read) const {
-    return _read_regions.count(read.query_name()) > 0;
+    return _read_regions.find(read->query_name()) != _read_regions.end();
 }

@@ -1,7 +1,7 @@
 #include "breakdancer/BreakDancer.hpp"
 
 #include "breakdancer/ReadCountsByLib.hpp"
-#include "config/BamConfig.hpp"
+#include "io/BamConfig.hpp"
 
 #include <map>
 #include <memory>
@@ -9,7 +9,6 @@
 #include <gtest/gtest.h>
 
 using namespace std;
-using namespace breakdancer;
 
 TEST(BreakDancer, accumulate_reads_in_region) {
 // The code this tests is under active development.

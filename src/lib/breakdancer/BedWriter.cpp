@@ -2,20 +2,17 @@
 
 #include "SvBuilder.hpp"
 #include "common/Options.hpp"
-#include "config/LibraryInfo.hpp"
-#include "io/Read.hpp"
+#include "io/LibraryInfo.hpp"
+#include "io/Alignment.hpp"
 
 #include <sstream>
 
 using namespace std;
-namespace bd = breakdancer;
 
 BedWriter::BedWriter(std::ostream& stream,
-        Options const& opts,
         LibraryInfo const& lib_info,
         bam_header_t const* bam_header)
     : _stream(stream)
-    , _opts(opts)
     , _lib_info(lib_info)
     , _bam_header(bam_header)
 {
@@ -34,10 +31,9 @@ void BedWriter::write(SvBuilder const& sv) {
         << seq_name << " " << sv.pos[0] << " "
         << sv.sv_type() << " " << sv.diffspan << "\"\tuseScore=0\n";
 
-    typedef vector<bd::Read>::const_iterator IterType;
-    for(IterType i = sv.support_reads.begin(); i != sv.support_reads.end(); ++i) {
-        bd::Read const& y = *i;
-        if(y.query_sequence().empty() || y.quality_string().empty() || y.bdflag() != sv.flag)
+    for(auto i = sv.support_reads.begin(); i != sv.support_reads.end(); ++i) {
+        Alignment const& y = **i;
+        if(!y.has_sequence() || y.bdflag() != sv.flag)
             continue;
         int aln_end = y.pos() - y.query_length() - 1;
         string color = y.ori() == FWD ? "0,0,255" : "255,0,0";

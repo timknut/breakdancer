@@ -1,6 +1,6 @@
 #include "SvBuilder.hpp"
 #include "ReadCountsByLib.hpp"
-#include "config/LibraryInfo.hpp"
+#include "io/LibraryInfo.hpp"
 
 #include <boost/bind.hpp>
 #include <boost/range/algorithm/for_each.hpp>
@@ -10,10 +10,9 @@
 #include <stdexcept>
 
 using namespace std;
-namespace bd = breakdancer;
 
 namespace {
-    const static bd::PerFlagArray<int>::type ZEROS = {{0}};
+    const static PerFlagArray<int>::type ZEROS = {{0}};
 }
 
 SvBuilder::SvBuilder(Options const& opts, int n, BasicRegion const* regions[2],
@@ -49,14 +48,14 @@ SvBuilder::SvBuilder(Options const& opts, int n, BasicRegion const* regions[2],
     // the sv may be contained in a single region, in which case
     // regions[1] will be null.
     if (n == 2) {
-        if(flag == bd::ARP_RF) {
+        if(flag == ReadFlag::ARP_RF) {
             pos[1] = regions[1]->end + max_readlen - 5;
         }
-        else if(flag == bd::ARP_FF) {
+        else if(flag == ReadFlag::ARP_FF) {
             pos[0] = pos[1];
             pos[1] = regions[1]->end + max_readlen - 5;
         }
-        else if(flag == bd::ARP_RR) {
+        else if(flag == ReadFlag::ARP_RR) {
             pos[1] = regions[1]->start;
         }
         else {
@@ -90,33 +89,29 @@ void SvBuilder::compute_copy_number(ReadCountsByLib const& counts,
 
 
 // choose the predominant type of read in a region
-bd::pair_orientation_flag SvBuilder::choose_sv_flag() {
-    bd::pair_orientation_flag flag = bd::NA;
+ReadFlag SvBuilder::choose_sv_flag() {
+    ReadFlag flag = ReadFlag::NA;
     int const* max_ptr = max_element(flag_counts.begin(), flag_counts.end());
     if (max_ptr != flag_counts.end() && *max_ptr > 0) {
-        flag = bd::pair_orientation_flag(max_ptr - flag_counts.begin());
+        flag = static_cast<ReadFlag>(max_ptr - flag_counts.begin());
     }
     return flag;
 }
 
-void SvBuilder::_observe_read(Read const& read, int region_idx) {
+void SvBuilder::_observe_read(Alignment::Ptr const& aln, int region_idx) {
     typedef ObservedReads::iterator IterType;
-    pair<IterType, bool> inserted = observed_reads.insert(make_pair(read.query_name(), read));
-    if(inserted.second) {
-        // This is the first time we have seen a read with this name.
-        observed_reads[read.query_name()] = read;
-    }
-    else {
+    pair<IterType, bool> inserted = observed_reads.insert(make_pair(aln->query_name(), aln));
+    if(!inserted.second) {
         // We just found an existing read's mate. Good for him/her.
-        bd::pair_orientation_flag bdflag = read.bdflag();
-        size_t const& index = read.lib_index();
+        ReadFlag bdflag = aln->bdflag();
+        size_t const& index = aln->lib_index();
         ++flag_counts[bdflag];
         ++type_library_readcount[bdflag][index];
-        type_library_meanspan[bdflag][index] += read.abs_isize();
+        type_library_meanspan[bdflag][index] += aln->abs_isize();
 
         ++num_pairs;
-        reads_to_free.push_back(read.query_name());
-        support_reads.push_back(read);
+        reads_to_free.push_back(aln->query_name());
+        support_reads.push_back(aln);
         support_reads.push_back(inserted.first->second);
         observed_reads.erase(inserted.first);
     }

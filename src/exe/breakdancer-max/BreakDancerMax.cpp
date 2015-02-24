@@ -3,14 +3,13 @@
 #include "breakdancer/ReadRegionData.hpp"
 #include "common/ConfigMap.hpp"
 #include "common/Options.hpp"
-#include "config/ConfigLoader.hpp"
-#include "config/BamConfig.hpp"
-#include "config/BamSummary.hpp"
-#include "config/LibraryConfig.hpp"
-#include "config/LibraryInfo.hpp"
+#include "io/BamConfig.hpp"
+#include "io/BamSummary.hpp"
+#include "io/ConfigLoader.hpp"
+#include "io/LibraryConfig.hpp"
+#include "io/LibraryInfo.hpp"
 #include "io/BamIo.hpp"
 #include "io/BamMerger.hpp"
-#include "io/Read.hpp"
 
 #include "version.h"
 
@@ -34,10 +33,6 @@
 using boost::shared_ptr;
 
 using namespace std;
-namespace bd = breakdancer;
-
-typedef SCORE_FLOAT_TYPE real_type;
-real_type _max_kahan_err = 0.0;
 
 // main function
 int main(int argc, char *argv[]) {
@@ -68,9 +63,10 @@ int main(int argc, char *argv[]) {
 
         BamMerger merged_reader(readers);
         ReadRegionData read_regions(opts);
+
         BreakDancer bdancer(
+            context.read_classifier(),
             opts,
-            cfg,
             lib_info,
             read_regions,
             merged_reader,
@@ -79,41 +75,40 @@ int main(int argc, char *argv[]) {
         cout << "#Software: " << __g_prog_version << " (commit "
             << __g_commit_hash << ")" << endl;
         cout << "#Command: ";
-        for(int i=0;i<argc;i++) {
-            cout << argv[i] << " ";
+        for(size_t i = 0; i < opts.orig_argv.size(); ++i) {
+            cout << opts.orig_argv[i] << " ";
         }
         cout << endl;
         cout << "#Library Statistics:" << endl;
         size_t num_libs = lib_info._cfg.num_libs();
         for(size_t i = 0; i < num_libs; ++i) {
-
-            uint32_t covered_ref_len = lib_info._summary.covered_reference_length();
             LibraryConfig const& lib_config = lib_info._cfg.library_config(i);
-            string const& lib = lib_config.name;
 
-            uint32_t lib_read_count = lib_info._summary.library_flag_distribution_for_index(i).read_count;
-
-            float sequence_coverage = float(lib_read_count*lib_config.readlens)/covered_ref_len;
+            // From BamSummary
+            uint32_t covered_ref_len = lib_info._summary.covered_reference_length();
+            uint32_t lib_read_count = lib_info._summary.library_flag_distribution(i).read_count;
+            float sequence_coverage = lib_info._summary.library_sequence_coverage(i);
+            float physical_coverage = float(lib_read_count*lib_config.mean_insertsize)/covered_ref_len/2;
 
             // compute read_density
+            float dens = 0.000001f;
             if(opts.CN_lib == 1){
                 if(lib_read_count != 0) {
-                    bdancer.read_density[lib] = float(lib_read_count)/covered_ref_len;
-                }
-                else{
-                    bdancer.read_density[lib] = 0.000001;
-                    cout << lib << " does not contain any normals" << endl;
+                    dens = float(lib_read_count)/covered_ref_len;
                 }
             }
             else{
                 uint32_t nreads = lib_info._summary.read_count_in_bam(lib_config.bam_file);
-                bdancer.read_density[lib_config.bam_file] = float(nreads)/covered_ref_len;
+                dens = float(nreads)/covered_ref_len;
             }
 
-            float physical_coverage = float(lib_read_count*lib_config.mean_insertsize)/covered_ref_len/2;
+            std::string const& lib = lib_config.name;
+            std::string const& density_libkey = opts.CN_lib ? lib : lib_config.bam_file;
+            bdancer.set_read_density(density_libkey, dens);
 
-            int nread_lengthDiscrepant = lib_info._summary.library_flag_distribution_for_index(i).read_counts_by_flag[bd::ARP_FR_big_insert] +
-                lib_info._summary.library_flag_distribution_for_index(i).read_counts_by_flag[bd::ARP_FR_small_insert];
+            int nread_lengthDiscrepant = \
+                lib_info._summary.library_flag_distribution(i).read_counts_by_flag[ReadFlag::ARP_LARGE_INSERT] +
+                lib_info._summary.library_flag_distribution(i).read_counts_by_flag[ReadFlag::ARP_SMALL_INSERT];
 
 
             int tmp = (nread_lengthDiscrepant > 0)?(float)covered_ref_len/(float)nread_lengthDiscrepant:50;
@@ -132,11 +127,11 @@ int main(int argc, char *argv[]) {
                 << "\tphycov:" << physical_coverage
                 ;
 
-            for (size_t j = 0; j < lib_info._summary.library_flag_distribution_for_index(i).read_counts_by_flag.size(); ++j) {
-                bd::pair_orientation_flag flag = bd::pair_orientation_flag(j);
-                uint32_t count = lib_info._summary.library_flag_distribution_for_index(i).read_counts_by_flag[flag];
+            for (size_t j = 0; j < lib_info._summary.library_flag_distribution(i).read_counts_by_flag.size(); ++j) {
+                ReadFlag flag = ReadFlag(j);
+                uint32_t count = lib_info._summary.library_flag_distribution(i).read_counts_by_flag[flag];
                 if (count)
-                    cout << "\t" << bd::FLAG_VALUES[flag] << ":" << count;
+                    cout << "\t" << FLAG_VALUES[flag] << ":" << count;
             }
             cout << "\n";
         }
@@ -159,7 +154,6 @@ int main(int argc, char *argv[]) {
 
         bdancer.run();
 
-        cerr << "Max Kahan error: " << _max_kahan_err << "\n";
     } catch (exception const& e) {
         cerr << "ERROR: " << e.what() << "\n";
         return 1;

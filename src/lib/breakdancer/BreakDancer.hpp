@@ -22,42 +22,44 @@
 #include <string>
 #include <vector>
 
-class Options;
-class BamConfig; //FIXME we probably won't need to store this once done stubbing in LibraryInfo
-class LibraryInfo;
 class BamReaderBase;
-class Logger;
+class IAlignmentClassifier;
+struct LibraryInfo;
+struct Options;
 
 class BreakDancer {
 public:
-    typedef breakdancer::Read ReadType;
     typedef BasicRegion::ReadVector ReadVector;
     typedef std::vector<BasicRegion*> RegionData;
     typedef std::vector<ReadCountsByLib> RoiReadCounts;
     typedef ReadRegionData::ReadsToRegionsMap ReadsToRegionsMap;
 
     BreakDancer(
+        IAlignmentClassifier const& read_classifier,
         Options const& opts,
-        BamConfig const& cfg,
         LibraryInfo const& lib_info,
         ReadRegionData& read_regions,
         BamReaderBase& merged_reader,
         int max_read_window_size
         );
 
-    void push_read(ReadType& aln, bam_header_t const* bam_header);
-    void build_connection(bam_header_t const* bam_header);
+    void push_read(Alignment::Ptr const& aln);
+    void build_connection();
 
+
+    void process_sv(std::vector<int> const& snodes);
     void set_max_read_window_size(int val) {
         _max_read_window_size = val;
     }
 
-    void process_breakpoint(bam_header_t const* bam_header);
-    void process_final_region(bam_header_t const* bam_header);
+    void process_breakpoint();
+    void process_final_region();
 
-    void dump_fastq(breakdancer::pair_orientation_flag const& flag, std::vector<ReadType> const& support_reads);
+    void dump_fastq(ReadFlag const& flag, std::vector<Alignment::Ptr> const& support_reads);
 
     void run();
+
+    void set_read_density(std::string const& libName, float density);
 
 private:
     uint32_t _region_lib_counts(size_t region_idx, std::string const& lib, RoiReadCounts const& x) const {
@@ -69,9 +71,9 @@ private:
         return 0;
     }
 
-private:
+private: // data
+    IAlignmentClassifier const& _read_classifier;
     Options const& _opts;
-    BamConfig const& _cfg;
     LibraryInfo const& _lib_info;
     ReadRegionData& _rdata;
     BamReaderBase& _merged_reader;
@@ -93,9 +95,5 @@ private:
     boost::scoped_ptr<std::ofstream> _bed_stream;
     boost::scoped_ptr<BedWriter> _bed_writer;
 
-
-public:
-    std::map<std::string, float> read_density;
-
-    void process_sv(std::vector<int> const& snodes, bam_header_t const* bam_header);
+    std::map<std::string, float> _read_density;
 };
